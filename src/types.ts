@@ -34,14 +34,21 @@ export interface Report {
   category: ReportCategory
   status: ReportStatus
   priority: PriorityLevel
-  latitude: number
-  longitude: number
+  latitude: number | null
+  longitude: number | null
   locationDescription: string
   assignedTo: string
   createdAt: string
   updatedAt: string
   resolvedAt?: string
   statusHistory: StatusHistoryEntry[]
+  reporterDisplayName?: string
+  community?: string
+  supportCount?: number
+  commentCount?: number
+  imageUrl?: string
+  resolutionImageUrl?: string
+  resolutionNotes?: string
 }
 
 export interface ReportDraft {
@@ -52,4 +59,5 @@ export interface ReportDraft {
   latitude: string
   longitude: string
   priority: PriorityLevel
+  imageUrl?: string
 }

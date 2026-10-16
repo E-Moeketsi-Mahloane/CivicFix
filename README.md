@@ -1,55 +1,50 @@
 # CivicFix
 
-CivicFix is a civic technology MVP built for the FNB App of the Year Hackathon 2026. The app helps residents report infrastructure issues, track progress, and gives administrators a dashboard for assigning and monitoring service requests.
+**Your Community. Your Voice. Visible Progress.**
 
-## Project status
+CivicFix is an independent civic-technology MVP for the FNB App of the Year Hackathon 2026. It is intended to help South African residents report infrastructure issues and follow visible progress through a community-oriented interface.
 
-This repository contains a working demo build using React, TypeScript, Vite, Tailwind CSS, and Leaflet. It includes:
+## Current implementation
 
-- a landing page
-- a report submission form
-- a resident dashboard
-- an admin dashboard with report status controls
-- an interactive map of sample issue locations
-- a clear demo-mode label so the data is not mistaken for an official municipal feed
+The React + TypeScript + Vite application currently provides a clearly labelled demo experience:
 
-## Tech stack
+- Responsive community feed with search, category/status/community/urgency filters, sorting, and incremental loading.
+- Report posts with sample imagery, privacy-conscious locations, status timelines, report details, support/save/follow actions, comments, and share links.
+- Report submission with required-field and coordinate validation, optional geolocation, a 2 MB image limit, and a rule-based duplicate warning.
+- Resident dashboard, sample notification centre, Leaflet map, and an admin demonstration view with report filters and locally applied status/team updates.
+- Dashboard counts are calculated from the reports held in the current app session. Sample images and report records are illustrative, not evidence of live municipal activity.
 
-- React + TypeScript + Vite
-- Tailwind CSS
-- Leaflet + OpenStreetMap tiles
-- react-router-dom
-- Supabase client stub ready for future integration
+## Important limitations
 
-## Local setup
+- Reports, comments, support, follows, and admin edits are held in frontend memory and are lost when the page is refreshed.
+- Supabase credentials/client scaffolding and a draft schema exist, but authentication, database reads/writes, Storage uploads, Realtime, and RLS policies are not connected or verified by this interface.
+- The admin view is not authenticated or protected and must not be used for real administrative data.
+- CivicFix is not an official municipal reporting channel. Reports entered here are not sent to a municipality.
+- Demo locations and images are illustrative. Use only appropriate, non-sensitive public locations for real submissions.
 
-```bash
+## Run locally
+
+```powershell
 npm install
 npm run dev
 ```
 
-Then open the local Vite URL in the browser.
+Open the local Vite URL printed in the terminal.
 
-## Demo environment
+To configure the Supabase client scaffold, copy `.env.example` to `.env` and provide a project URL and anon key. **This only configures the client scaffold; it does not make the demo screens persist data or provide authentication.** Never put a Supabase service-role key in a Vite environment variable.
 
-The app defaults to demo mode if `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are missing. This is intentionally separate from any real production backend and should be treated as a presentation-only flow.
+## Checks
 
-Create a `.env` file from the example:
-
-```bash
-cp .env.example .env
-```
-
-Then fill in Supabase values when available.
-
-## Available scripts
-
-```bash
-npm run dev
+```powershell
 npm run build
 npm run lint
 ```
 
-## Notes
+## Stack
 
-This demo is intentionally lightweight and is designed to be understandable for a final-year IT student while still reflecting a realistic civic reporting workflow. It does not claim to be an official municipal service channel or a production backend integration.
+- React, TypeScript, Vite
+- Tailwind CSS with CivicFix design tokens and custom responsive styles
+- React Router
+- Lucide React
+- Leaflet / OpenStreetMap tiles
+- Supabase JS client scaffold (integration not implemented)

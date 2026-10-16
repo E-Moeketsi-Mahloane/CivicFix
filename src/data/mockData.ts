@@ -18,21 +18,6 @@ export const statusOptions: ReportStatus[] = [
   'Rejected',
 ]
 
-export const featureCards = [
-  {
-    title: 'Fast reporting',
-    description: 'Residents can submit issues with a photo, category, and exact location in under two minutes.',
-  },
-  {
-    title: 'Progress visibility',
-    description: 'Every status change is logged with who changed it and why, so residents can understand next steps.',
-  },
-  {
-    title: 'Admin oversight',
-    description: 'Municipal teams can triage, assign, and track service requests from one management view.',
-  },
-]
-
 export const initialReports: Report[] = [
   {
     id: 'report-1',
@@ -43,8 +28,8 @@ export const initialReports: Report[] = [
     category: 'Roads & Potholes',
     status: 'Assigned',
     priority: 'High',
-    latitude: -26.1719,
-    longitude: 28.0107,
+    latitude: -26.267,
+    longitude: 28.025,
     locationDescription: 'Main Road and Long Street, Johannesburg South',
     assignedTo: 'Road Maintenance Unit',
     createdAt: '2026-10-04T09:20:00.000Z',
@@ -59,6 +44,11 @@ export const initialReports: Report[] = [
         createdAt: '2026-10-05T08:00:00.000Z',
       },
     ],
+    reporterDisplayName: 'Thabo M.',
+    community: 'Johannesburg South',
+    supportCount: 8,
+    commentCount: 3,
+    imageUrl: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=1000&q=80',
   },
   {
     id: 'report-2',
@@ -69,21 +59,13 @@ export const initialReports: Report[] = [
     category: 'Electricity & Streetlights',
     status: 'In Progress',
     priority: 'Medium',
-    latitude: -26.1507,
-    longitude: 28.0315,
+    latitude: -26.15,
+    longitude: 28.032,
     locationDescription: 'Corner of Oak Avenue and Community Road',
     assignedTo: 'Electrical Services',
     createdAt: '2026-10-02T18:10:00.000Z',
     updatedAt: '2026-10-07T10:30:00.000Z',
     statusHistory: [
-      {
-        id: 'history-2',
-        previousStatus: 'Submitted',
-        newStatus: 'Under Review',
-        changedBy: 'Municipal admin',
-        note: 'Reviewed by electrical operations team.',
-        createdAt: '2026-10-03T08:40:00.000Z',
-      },
       {
         id: 'history-3',
         previousStatus: 'Under Review',
@@ -92,7 +74,20 @@ export const initialReports: Report[] = [
         note: 'Replacement parts allocated and contractor notified.',
         createdAt: '2026-10-07T10:30:00.000Z',
       },
+      {
+        id: 'history-2',
+        previousStatus: 'Submitted',
+        newStatus: 'Under Review',
+        changedBy: 'Municipal admin',
+        note: 'Reviewed by electrical operations team.',
+        createdAt: '2026-10-03T08:40:00.000Z',
+      },
     ],
+    reporterDisplayName: 'Community member',
+    community: 'Oak Avenue',
+    supportCount: 5,
+    commentCount: 2,
+    imageUrl: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1000&q=80',
   },
   {
     id: 'report-3',
@@ -103,22 +98,14 @@ export const initialReports: Report[] = [
     category: 'Water & Sewage',
     status: 'Resolved',
     priority: 'Critical',
-    latitude: -26.1939,
-    longitude: 28.0246,
+    latitude: -25.706,
+    longitude: 28.373,
     locationDescription: 'Mamelodi West, Gate 2 entrance',
     assignedTo: 'Wastewater Operations',
     createdAt: '2026-09-21T13:00:00.000Z',
     updatedAt: '2026-09-23T12:00:00.000Z',
     resolvedAt: '2026-09-23T12:00:00.000Z',
     statusHistory: [
-      {
-        id: 'history-4',
-        previousStatus: 'Submitted',
-        newStatus: 'Assigned',
-        changedBy: 'Municipal admin',
-        note: 'Assigned to the wastewater response field crew.',
-        createdAt: '2026-09-22T07:05:00.000Z',
-      },
       {
         id: 'history-5',
         previousStatus: 'Assigned',
@@ -127,15 +114,21 @@ export const initialReports: Report[] = [
         note: 'Overflow contained and the affected trench was cleaned. Completion evidence added.',
         createdAt: '2026-09-23T12:00:00.000Z',
       },
+      {
+        id: 'history-4',
+        previousStatus: 'Submitted',
+        newStatus: 'Assigned',
+        changedBy: 'Municipal admin',
+        note: 'Assigned to the wastewater response field crew.',
+        createdAt: '2026-09-22T07:05:00.000Z',
+      },
     ],
+    reporterDisplayName: 'Nomsa K.',
+    community: 'Mamelodi West',
+    supportCount: 12,
+    commentCount: 4,
+    imageUrl: 'https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1000&q=80',
+    resolutionImageUrl: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1000&q=80',
+    resolutionNotes: 'The overflow was contained and the affected trench was cleaned. This sample resolution is illustrative.',
   },
 ]
-
-export const dashboardStats = [
-  { label: 'Total reports', value: '1,284', tone: 'slate' },
-  { label: 'Open reports', value: '218', tone: 'amber' },
-  { label: 'Under review', value: '46', tone: 'sky' },
-  { label: 'Resolved', value: '928', tone: 'emerald' },
-]
-
-export const demoNote = 'Demo mode is active. This sample data is for presentation purposes only and is not a live municipal reporting feed.'

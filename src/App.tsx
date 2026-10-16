@@ -1,748 +1,694 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import {
-  AlertTriangle,
-  ArrowRight,
-  BellRing,
-  Building2,
-  CheckCheck,
-  FileText,
-  MapPinned,
+  Activity,
+  Bell,
+  Check,
+  ChevronDown,
+  CirclePlus,
+  ClipboardList,
+  House,
+  Map,
+  MapPin,
   ShieldCheck,
-  Sparkles,
-  TrendingUp,
+  X,
 } from 'lucide-react'
-import { BrowserRouter, Link, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Link, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { ReportMap } from './components/ReportMap'
+import { ReportPost } from './components/ReportPost'
 import { StatusBadge } from './components/StatusBadge'
-import { dashboardStats, demoNote, featureCards, initialReports, reportCategories, statusOptions } from './data/mockData'
-import { isDemoMode } from './lib/supabase'
-import { buildDashboardMetrics, findDuplicateReports, generateReferenceNumber, nextStatusMessage } from './services/reportService'
+import { CommunityFeedPage } from './pages/CommunityFeedPage'
+import { initialReports, reportCategories, statusOptions } from './data/mockData'
+import {
+  buildDashboardMetrics,
+  findDuplicateReports,
+  generateReferenceNumber,
+} from './services/reportService'
 import type { Report, ReportDraft, ReportStatus } from './types'
+import './App.css'
 
-const navItems = [
-  { label: 'Home', to: '/' },
-  { label: 'Report issue', to: '/report' },
-  { label: 'Resident dashboard', to: '/dashboard' },
-  { label: 'Admin dashboard', to: '/admin' },
-  { label: 'Map view', to: '/map' },
-]
-
-const defaultDraft: ReportDraft = {
+const blankDraft: ReportDraft = {
   title: '',
   description: '',
   category: 'Water & Sewage',
   locationDescription: '',
-  latitude: '-26.1719',
-  longitude: '28.0107',
+  latitude: '',
+  longitude: '',
   priority: 'Medium',
 }
 
 function App() {
   const [reports, setReports] = useState<Report[]>(initialReports)
-  const [draft, setDraft] = useState<ReportDraft>(defaultDraft)
-  const [submitMessage, setSubmitMessage] = useState('')
-  const dashboardMetrics = useMemo(() => buildDashboardMetrics(reports), [reports])
+  const [supportedIds, setSupportedIds] = useState<string[]>([])
+  const [savedIds, setSavedIds] = useState<string[]>([])
+  const [followedIds, setFollowedIds] = useState<string[]>([])
+  const [flaggedIds, setFlaggedIds] = useState<string[]>([])
+  const [commentsByReport, setCommentsByReport] = useState<Record<string, string[]>>({})
+  const [previewImage, setPreviewImage] = useState('')
+  const [toast, setToast] = useState('')
 
-  const residentReports = useMemo(
-    () => reports.filter((report) => report.userId === 'resident-a' || report.userId === 'resident-demo'),
-    [reports],
-  )
-
-  const openReportsCount = reports.filter(
-    (report) => report.status !== 'Resolved' && report.status !== 'Rejected',
-  ).length
-
-  const handleDraftChange = (field: keyof ReportDraft, value: string) => {
-    setDraft((current) => ({ ...current, [field]: value }))
-  }
-
-  const handleStatusChange = (reportId: string, nextStatus: ReportStatus) => {
-    setReports((current) =>
-      current.map((report) => {
-        if (report.id !== reportId) {
-          return report
-        }
-
-        return {
-          ...report,
-          status: nextStatus,
-          updatedAt: new Date().toISOString(),
-          resolvedAt: nextStatus === 'Resolved' ? new Date().toISOString() : report.resolvedAt,
-          statusHistory: [
-            {
-              id: `history-${Date.now()}-${reportId}`,
-              previousStatus: report.status,
-              newStatus: nextStatus,
-              changedBy: 'Municipal admin',
-              note: `Status updated to ${nextStatus} by the admin review team.`,
-              createdAt: new Date().toISOString(),
-            },
-            ...report.statusHistory,
-          ],
-        }
-      }),
+  const handleSupport = (reportId: string) => {
+    setSupportedIds((current) =>
+      current.includes(reportId) ? current.filter((id) => id !== reportId) : [...current, reportId],
     )
   }
-
-  const handleSubmitReport = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-
-    if (!draft.title.trim() || !draft.description.trim() || !draft.locationDescription.trim()) {
-      setSubmitMessage('Please complete the title, description, and location before submitting.')
-      return
+  const handleSave = (reportId: string) => {
+    const isSaving = !savedIds.includes(reportId)
+    setSavedIds((current) => {
+      return current.includes(reportId)
+        ? current.filter((id) => id !== reportId)
+        : [...current, reportId]
+    })
+    setToast(isSaving ? 'Report saved to your demo list.' : 'Report removed from saved items.')
+  }
+  const handleFollow = (reportId: string) => {
+    const isFollowing = !followedIds.includes(reportId)
+    setFollowedIds((current) => {
+      return current.includes(reportId)
+        ? current.filter((id) => id !== reportId)
+        : [...current, reportId]
+    })
+    setToast(isFollowing ? 'You are following this report in this demo session.' : 'You unfollowed this report.')
+  }
+  const handleFlag = (reportId: string) => {
+    if (flaggedIds.includes(reportId)) return
+    setFlaggedIds((current) => [...current, reportId])
+    setToast('Flag saved in this demo only. No moderator has been notified.')
+  }
+  const handleAddComment = (reportId: string, comment: string) => {
+    setCommentsByReport((current) => ({
+      ...current,
+      [reportId]: [...(current[reportId] ?? []), comment],
+    }))
+  }
+  const handleShare = async (report: Report) => {
+    const reportUrl = `${window.location.origin}/reports/${report.id}`
+    try {
+      await navigator.clipboard.writeText(reportUrl)
+      setToast(`Link copied for ${report.referenceNumber}.`)
+    } catch {
+      setToast(`Share this report using its reference: ${report.referenceNumber}.`)
     }
-
-    const duplicateMatches = findDuplicateReports(reports, draft)
-    const uniqueReference = generateReferenceNumber()
+  }
+  const handleReportSubmit = (draft: ReportDraft, imageUrl?: string): Report => {
     const timestamp = new Date().toISOString()
-
-    if (duplicateMatches.length > 0) {
-      setSubmitMessage(
-        `Possible duplicate match detected: ${duplicateMatches
-          .map((report) => report.referenceNumber)
-          .join(', ')}. Please review before submitting if this is a separate issue.`,
-      )
-    }
-
-    const newReport: Report = {
-      id: `report-${Date.now()}`,
-      referenceNumber: uniqueReference,
+    const possibleDuplicates = findDuplicateReports(reports, draft)
+    const nextReport: Report = {
+      id: `demo-${crypto.randomUUID()}`,
+      referenceNumber: generateReferenceNumber(),
       userId: 'resident-demo',
+      reporterDisplayName: 'You',
+      community: draft.locationDescription,
       title: draft.title.trim(),
       description: draft.description.trim(),
       category: draft.category,
       status: 'Submitted',
       priority: draft.priority,
-      latitude: Number(draft.latitude) || -26.1719,
-      longitude: Number(draft.longitude) || 28.0107,
+      latitude: draft.latitude.trim() ? Number(draft.latitude) : null,
+      longitude: draft.longitude.trim() ? Number(draft.longitude) : null,
       locationDescription: draft.locationDescription.trim(),
       assignedTo: 'Unassigned',
       createdAt: timestamp,
       updatedAt: timestamp,
+      supportCount: 0,
+      commentCount: 0,
+      imageUrl,
       statusHistory: [
         {
-          id: `history-${Date.now()}`,
+          id: `history-${crypto.randomUUID()}`,
           previousStatus: 'Submitted',
           newStatus: 'Submitted',
           changedBy: 'Resident',
-          note: 'Report submitted by resident through the CivicFix demo workflow.',
+          note: 'Report submitted in the CivicFix demo environment.',
           createdAt: timestamp,
         },
       ],
     }
-
-    setReports((current) => [newReport, ...current])
-    setDraft(defaultDraft)
-    setSubmitMessage(`Report submitted successfully. Your reference number is ${uniqueReference}.`)
+    setReports((current) => [nextReport, ...current])
+    setToast(
+      possibleDuplicates.length
+        ? `Report created (${nextReport.referenceNumber}). Similar sample reports: ${possibleDuplicates.map((report) => report.referenceNumber).join(', ')}.`
+        : `Report created with reference ${nextReport.referenceNumber}.`,
+    )
+    return nextReport
+  }
+  const handleStatusChange = (reportId: string, status: ReportStatus, note: string, assignedTo: string) => {
+    const timestamp = new Date().toISOString()
+    setReports((current) =>
+      current.map((report) => {
+        if (report.id !== reportId) return report
+        if (status === report.status && assignedTo.trim() === report.assignedTo && !note.trim()) return report
+        const statusChanged = status !== report.status
+        return {
+          ...report,
+          status,
+          updatedAt: timestamp,
+          resolvedAt: status === 'Resolved' ? timestamp : undefined,
+          assignedTo: assignedTo.trim() || report.assignedTo,
+          resolutionNotes: status === 'Resolved' ? note.trim() : report.resolutionNotes,
+          statusHistory: statusChanged || note.trim()
+            ? [
+                {
+                  id: `history-${crypto.randomUUID()}`,
+                  previousStatus: report.status,
+                  newStatus: status,
+                  changedBy: 'Demo administrator',
+                  note: note.trim(),
+                  createdAt: timestamp,
+                },
+                ...report.statusHistory,
+              ]
+            : report.statusHistory,
+        }
+      }),
+    )
+    setToast(`Demo status update recorded: ${status}.`)
   }
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-slate-950 text-slate-100">
-        <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
-          <header className="rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4 shadow-2xl shadow-slate-950/40 backdrop-blur sm:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/40">
-                  <Building2 className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-lg font-bold tracking-tight text-white">CivicFix</p>
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Your community. Your voice.</p>
-                </div>
-              </div>
-
-              <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
-                {navItems.map(({ label, to }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    className={({ isActive }) =>
-                      `rounded-full px-3 py-2 transition ${
-                        isActive ? 'bg-emerald-500 text-slate-950' : 'hover:bg-slate-800 hover:text-white'
-                      }`
-                    }
-                  >
-                    {label}
-                  </NavLink>
-                ))}
-              </nav>
-
-              <div className="flex items-center gap-2 self-start rounded-full border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-medium text-slate-300">
-                <Sparkles className="h-3.5 w-3.5 text-emerald-300" />
-                {isDemoMode ? 'Demo mode' : 'Live Supabase ready'}
-              </div>
-            </div>
-          </header>
-
-          <main className="mt-8">
-            <Routes>
-              <Route
-                path="/"
-                element={<HomePage reports={reports} openReportsCount={openReportsCount} dashboardMetrics={dashboardMetrics} />}
-              />
-              <Route
-                path="/report"
-                element={
-                  <ReportSubmissionPage
-                    draft={draft}
-                    submitMessage={submitMessage}
-                    onChange={handleDraftChange}
-                    onSubmit={handleSubmitReport}
-                  />
-                }
-              />
-              <Route path="/dashboard" element={<ResidentDashboardPage reports={residentReports} />} />
-              <Route
-                path="/admin"
-                element={<AdminDashboardPage reports={reports} onStatusChange={handleStatusChange} />}
-              />
-              <Route path="/map" element={<MapPage reports={reports} />} />
-            </Routes>
-          </main>
-        </div>
+      <div className="app-shell">
+        <SiteHeader />
+        <main className="app-main">
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <CommunityFeedPage
+                  reports={reports}
+                  supportedIds={supportedIds}
+                  savedIds={savedIds}
+                  followedIds={followedIds}
+                  flaggedIds={flaggedIds}
+                  commentsByReport={commentsByReport}
+                  onSupport={handleSupport}
+                  onSave={handleSave}
+                  onFollow={handleFollow}
+                  onFlag={handleFlag}
+                  onAddComment={handleAddComment}
+                  onPreview={setPreviewImage}
+                  onShare={handleShare}
+                />
+              }
+            />
+            <Route
+              path="/feed"
+              element={
+                <CommunityFeedPage
+                  reports={reports}
+                  supportedIds={supportedIds}
+                  savedIds={savedIds}
+                  followedIds={followedIds}
+                  flaggedIds={flaggedIds}
+                  commentsByReport={commentsByReport}
+                  onSupport={handleSupport}
+                  onSave={handleSave}
+                  onFollow={handleFollow}
+                  onFlag={handleFlag}
+                  onAddComment={handleAddComment}
+                  onPreview={setPreviewImage}
+                  onShare={handleShare}
+                />
+              }
+            />
+            <Route path="/report" element={<ReportSubmissionPage reports={reports} onSubmit={handleReportSubmit} />} />
+            <Route path="/dashboard" element={<MyReportsPage reports={reports.filter((report) => report.userId === 'resident-demo' || report.userId === 'resident-a')} />} />
+            <Route
+              path="/admin"
+              element={
+                <AdminPage
+                  reports={reports}
+                  onStatusChange={handleStatusChange}
+                  onPreview={setPreviewImage}
+                />
+              }
+            />
+            <Route path="/map" element={<MapPage reports={reports} />} />
+            <Route
+              path="/notifications"
+              element={
+                <NotificationsPage
+                  reports={reports}
+                  followedIds={followedIds}
+                />
+              }
+            />
+            <Route
+              path="/reports/:reportId"
+              element={
+                <ReportDetailsPage
+                  reports={reports}
+                  supportedIds={supportedIds}
+                  savedIds={savedIds}
+                  followedIds={followedIds}
+                  flaggedIds={flaggedIds}
+                  commentsByReport={commentsByReport}
+                  onSupport={handleSupport}
+                  onSave={handleSave}
+                  onFollow={handleFollow}
+                  onFlag={handleFlag}
+                  onAddComment={handleAddComment}
+                  onPreview={setPreviewImage}
+                  onShare={handleShare}
+                />
+              }
+            />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </main>
+        <MobileNavigation />
+        {previewImage ? (
+          <div className="image-lightbox" role="dialog" aria-modal="true" aria-label="Report photo preview" onClick={() => setPreviewImage('')}>
+            <button type="button" className="lightbox-close" onClick={() => setPreviewImage('')} aria-label="Close photo preview"><X size={22} /></button>
+            <img src={previewImage} alt="Expanded community report evidence" onClick={(event) => event.stopPropagation()} />
+          </div>
+        ) : null}
+        {toast ? (
+          <div className="toast-message" role="status">
+            <Check size={16} /> <span>{toast}</span>
+            <button type="button" onClick={() => setToast('')} aria-label="Dismiss message"><X size={15} /></button>
+          </div>
+        ) : null}
       </div>
     </BrowserRouter>
   )
 }
 
-function HomePage({
-  reports,
-  openReportsCount,
-  dashboardMetrics,
-}: {
-  reports: Report[]
-  openReportsCount: number
-  dashboardMetrics: ReturnType<typeof buildDashboardMetrics>
-}) {
+function SiteHeader() {
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [noticeRead, setNoticeRead] = useState(false)
+
   return (
-    <div className="space-y-10">
-      <section className="overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/60 p-6 shadow-2xl shadow-slate-950/30 sm:p-10">
-        <div className="grid items-center gap-8 lg:grid-cols-[1.3fr_0.7fr]">
-          <div className="space-y-6">
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Community accountability
-            </span>
-            <div className="space-y-4">
-              <h1 className="max-w-xl text-4xl font-black tracking-tight text-white sm:text-5xl">
-                Fix what’s broken. Track what’s happening.
-              </h1>
-              <p className="max-w-xl text-lg text-slate-300">
-                CivicFix makes it easier for residents to report infrastructure problems and for municipal teams to respond with clear status updates and accountable service delivery.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                to="/report"
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
-              >
-                Report an issue
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                to="/admin"
-                className="inline-flex items-center gap-2 rounded-full border border-slate-600 bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:border-slate-500 hover:bg-slate-800"
-              >
-                View admin dashboard
-              </Link>
-            </div>
-            <div className="flex flex-wrap gap-4 pt-2 text-sm text-slate-300">
-              <div className="flex items-center gap-2">
-                <MapPinned className="h-4 w-4 text-emerald-300" />
-                Location-aware reporting
+    <header className="site-header">
+      <div className="site-header-inner">
+        <Link to="/" className="brand" aria-label="CivicFix home">
+          <img className="brand-logo" src="/CivicFix_Logo.svg" alt="" />
+          <span className="brand-name">CivicFix</span>
+        </Link>
+        <nav className="desktop-nav" aria-label="Main navigation">
+          <NavLink to="/" end className={({ isActive }) => `top-nav-link${isActive ? ' is-active' : ''}`}><House size={16} />Home</NavLink>
+          <NavLink to="/feed" className={({ isActive }) => `top-nav-link${isActive ? ' is-active' : ''}`}><Activity size={16} />Community feed</NavLink>
+          <NavLink to="/report" className={({ isActive }) => `top-nav-link${isActive ? ' is-active' : ''}`}><CirclePlus size={16} />Report an issue</NavLink>
+          <NavLink to="/map" className={({ isActive }) => `top-nav-link${isActive ? ' is-active' : ''}`}><Map size={16} />Map</NavLink>
+          <NavLink to="/dashboard" className={({ isActive }) => `top-nav-link${isActive ? ' is-active' : ''}`}><ClipboardList size={16} />My reports</NavLink>
+          <NavLink to="/admin" className={({ isActive }) => `top-nav-link admin-nav${isActive ? ' is-active' : ''}`}><ShieldCheck size={16} />Admin demo</NavLink>
+        </nav>
+        <div className="header-actions">
+          <div className="header-popover-wrap">
+            <button
+              type="button"
+              className={`header-icon-button${notificationsOpen ? ' is-active' : ''}`}
+              onClick={() => { setNotificationsOpen((open) => !open); setProfileOpen(false) }}
+              aria-label="Notifications"
+              aria-expanded={notificationsOpen}
+            >
+              <Bell size={18} />
+              {!noticeRead ? <span className="notification-dot" /> : null}
+            </button>
+            {notificationsOpen ? (
+              <div className="header-popover">
+                <div className="popover-heading"><strong>Notifications</strong><button type="button" onClick={() => setNoticeRead(true)}>Mark read</button></div>
+                <p className="notification-item"><span className="notification-indicator" />Demo activity: sample reports have progress updates.</p>
+                <Link to="/notifications" onClick={() => setNotificationsOpen(false)}>View notification centre <span>→</span></Link>
               </div>
-              <div className="flex items-center gap-2">
-                <BellRing className="h-4 w-4 text-emerald-300" />
-                Status tracking
+            ) : null}
+          </div>
+          <div className="header-popover-wrap profile-wrap">
+            <button
+              type="button"
+              className="profile-trigger"
+              onClick={() => { setProfileOpen((open) => !open); setNotificationsOpen(false) }}
+              aria-expanded={profileOpen}
+            >
+              <span className="avatar avatar-header">Y</span><span className="profile-trigger-label">Demo resident</span><ChevronDown size={14} />
+            </button>
+            {profileOpen ? (
+              <div className="header-popover profile-popover">
+                <strong>Demo resident</strong>
+                <p>Authentication isn’t connected in this demo.</p>
+                <Link to="/dashboard" onClick={() => setProfileOpen(false)}>Open my reports <span>→</span></Link>
+                <Link to="/admin" onClick={() => setProfileOpen(false)}>Admin dashboard (demo) <span>→</span></Link>
               </div>
-            </div>
+            ) : null}
           </div>
-
-          <div className="rounded-3xl border border-slate-700 bg-slate-900/70 p-5 shadow-xl shadow-slate-950/25">
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Live overview</p>
-              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-300">
-                {openReportsCount} open
-              </span>
-            </div>
-            <div className="space-y-4">
-              {dashboardMetrics.map((item) => (
-                <div key={item.label} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-slate-400">{item.label}</p>
-                    <TrendingUp className="h-4 w-4 text-emerald-300" />
-                  </div>
-                  <p className="mt-3 text-3xl font-black text-white">{item.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          <span className="environment-label">Demo Environment</span>
         </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        {featureCards.map((feature, index) => (
-          <div key={feature.title} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-400/20">
-              {index === 0 ? <FileText className="h-4 w-4" /> : index === 1 ? <CheckCheck className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-            </div>
-            <h2 className="text-xl font-semibold text-white">{feature.title}</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-300">{feature.description}</p>
-          </div>
-        ))}
-      </section>
-
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6">
-        <div className="mb-5 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Demo workflow</p>
-            <h2 className="mt-2 text-2xl font-bold text-white">How CivicFix works</h2>
-          </div>
-          <div className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200">
-            {demoNote}
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-4">
-          {[
-            'Resident submits pothole or sewage leak',
-            'Reference number generated and added to dashboard',
-            'Admin reviews, prioritises, and assigns issue',
-            'Report status updates appear to resident in real time',
-          ].map((item, index) => (
-            <div key={item} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-              <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-sm font-bold text-emerald-300">
-                {index + 1}
-              </div>
-              <p className="text-sm leading-6 text-slate-300">{item}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Community map</p>
-              <h2 className="mt-2 text-2xl font-bold text-white">Reported issues</h2>
-            </div>
-            <Link to="/map" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">
-              Open full map
-            </Link>
-          </div>
-          <ReportMap reports={reports} />
-        </div>
-
-        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6">
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Recent reports</p>
-          <div className="mt-4 space-y-3">
-            {reports.slice(0, 3).map((report) => (
-              <div key={report.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">{report.referenceNumber}</p>
-                    <p className="text-sm text-slate-300">{report.title}</p>
-                  </div>
-                  <StatusBadge status={report.status} />
-                </div>
-                <p className="mt-3 text-sm text-slate-400">{report.locationDescription}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    </div>
+      </div>
+    </header>
   )
 }
 
-function ReportSubmissionPage({
-  draft,
-  submitMessage,
-  onChange,
-  onSubmit,
-}: {
-  draft: ReportDraft
-  submitMessage: string
-  onChange: (field: keyof ReportDraft, value: string) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
-}) {
+function MobileNavigation() {
+  return (
+    <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+      <NavLink to="/" end><House size={19} /><span>Home</span></NavLink>
+      <NavLink to="/map"><MapPin size={19} /><span>Map</span></NavLink>
+      <NavLink to="/report" className="mobile-report-link"><CirclePlus size={22} /><span>Report</span></NavLink>
+      <NavLink to="/dashboard"><ClipboardList size={19} /><span>My reports</span></NavLink>
+      <NavLink to="/notifications"><Bell size={19} /><span>Updates</span></NavLink>
+    </nav>
+  )
+}
+
+function ReportSubmissionPage({ reports, onSubmit }: { reports: Report[]; onSubmit: (draft: ReportDraft, imageUrl?: string) => Report }) {
+  const [draft, setDraft] = useState<ReportDraft>(blankDraft)
+  const [imageUrl, setImageUrl] = useState('')
+  const [error, setError] = useState('')
+  const [duplicateRefs, setDuplicateRefs] = useState<string[]>([])
+  const [geolocationMessage, setGeolocationMessage] = useState('')
   const navigate = useNavigate()
 
+  const update = (field: keyof ReportDraft, value: string) => {
+    setDraft((current) => ({ ...current, [field]: value }))
+    setError('')
+    setDuplicateRefs([])
+  }
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setGeolocationMessage('Location isn’t available in this browser. Enter a nearby landmark instead.')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setDraft((current) => ({ ...current, latitude: coords.latitude.toFixed(6), longitude: coords.longitude.toFixed(6) }))
+        setGeolocationMessage('Location added. The demo map will use approximate coordinates.')
+      },
+      () => setGeolocationMessage('Location permission was unavailable. You can enter a nearby landmark and coordinates manually.'),
+      { enableHighAccuracy: false, timeout: 8000 },
+    )
+  }
+  const handleImage = (file?: File) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError('Choose an image file to attach.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Images must be 2 MB or smaller in this demo.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setImageUrl(reader.result)
+    }
+    reader.onerror = () => setError('The selected image could not be read. Please try another image.')
+    reader.readAsDataURL(file)
+  }
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const latitude = draft.latitude.trim() ? Number(draft.latitude) : undefined
+    const longitude = draft.longitude.trim() ? Number(draft.longitude) : undefined
+    if (!draft.title.trim() || !draft.description.trim() || !draft.locationDescription.trim()) {
+      setError('Add a title, description and community location before submitting.')
+      return
+    }
+    if ((latitude !== undefined && !Number.isFinite(latitude)) || (longitude !== undefined && !Number.isFinite(longitude))) {
+      setError('Latitude and longitude must be valid numbers.')
+      return
+    }
+    if ((latitude === undefined) !== (longitude === undefined)) {
+      setError('Enter both latitude and longitude, or leave both blank.')
+      return
+    }
+    if ((latitude !== undefined && (latitude < -90 || latitude > 90)) || (longitude !== undefined && (longitude < -180 || longitude > 180))) {
+      setError('The location coordinates are outside valid map ranges.')
+      return
+    }
+    const matches = findDuplicateReports(reports, draft)
+    const matchedReferences = matches.map((report) => report.referenceNumber)
+    if (matchedReferences.length && matchedReferences.join('|') !== duplicateRefs.join('|')) {
+      setDuplicateRefs(matchedReferences)
+      return
+    }
+    const createdReport = onSubmit(draft, imageUrl || undefined)
+    navigate(`/reports/${createdReport.id}`)
+  }
+
   return (
-    <div className="mx-auto max-w-4xl rounded-3xl border border-slate-800 bg-slate-900/80 p-6 sm:p-8">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Report an issue</p>
-          <h1 className="mt-2 text-3xl font-bold text-white">Submit an infrastructure concern</h1>
-        </div>
-        <button
-          type="button"
-          onClick={() => navigate('/dashboard')}
-          className="rounded-full border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
-        >
-          View my dashboard
-        </button>
+    <section className="page-content form-page">
+      <div className="page-title-block">
+        <p className="eyebrow">Community reporting</p>
+        <h1>Report an issue</h1>
+        <p>Share a service-delivery concern with a clear location so the community can follow its progress.</p>
       </div>
-
-      <form className="space-y-6" onSubmit={onSubmit}>
-        <div className="grid gap-5 md:grid-cols-2">
-          <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-            <span>Report title</span>
-            <input
-              value={draft.title}
-              onChange={(event) => onChange('title', event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-white outline-none transition focus:border-emerald-400"
-              placeholder="Large pothole causing traffic issues"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-            <span>Problem description</span>
-            <textarea
-              value={draft.description}
-              onChange={(event) => onChange('description', event.target.value)}
-              rows={5}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-white outline-none transition focus:border-emerald-400"
-              placeholder="Describe what is happening, the urgency, and any risks to residents or motorists."
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Issue category</span>
-            <select
-              value={draft.category}
-              onChange={(event) => onChange('category', event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-white outline-none transition focus:border-emerald-400"
-            >
-              {reportCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
+      <div className="form-disclaimer"><ShieldCheck size={18} /><p><strong>Independent community platform.</strong> This demo records reports in your browser session; it does not submit official municipal complaints.</p></div>
+      <form className="report-form" onSubmit={submit}>
+        <div className="form-section-title"><span>01</span><div><h2>Describe the issue</h2><p>Keep the report specific and factual.</p></div></div>
+        <label>Report title
+          <input required maxLength={100} value={draft.title} onChange={(event) => update('title', event.target.value)} placeholder="For example, water leak on Main Road" />
+        </label>
+        <label>Description
+          <textarea required maxLength={1200} rows={5} value={draft.description} onChange={(event) => update('description', event.target.value)} placeholder="What happened? When did you notice it? Is there a safety concern?" />
+          <small>{draft.description.length}/1200 characters</small>
+        </label>
+        <div className="form-grid">
+          <label>Issue category
+            <select value={draft.category} onChange={(event) => update('category', event.target.value)}>
+              {reportCategories.map((category) => <option key={category}>{category}</option>)}
             </select>
           </label>
-
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Priority</span>
-            <select
-              value={draft.priority}
-              onChange={(event) => onChange('priority', event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-white outline-none transition focus:border-emerald-400"
-            >
-              {['Low', 'Medium', 'High', 'Critical'].map((priority) => (
-                <option key={priority} value={priority}>
-                  {priority}
-                </option>
-              ))}
+          <label>Urgency observed
+            <select value={draft.priority} onChange={(event) => update('priority', event.target.value)}>
+              {['Low', 'Medium', 'High', 'Critical'].map((priority) => <option key={priority}>{priority}</option>)}
             </select>
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-            <span>Location description</span>
-            <input
-              value={draft.locationDescription}
-              onChange={(event) => onChange('locationDescription', event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-white outline-none transition focus:border-emerald-400"
-              placeholder="Corner of Main Road and Jane Avenue, next to the school gate"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Latitude</span>
-            <input
-              value={draft.latitude}
-              onChange={(event) => onChange('latitude', event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-white outline-none transition focus:border-emerald-400"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Longitude</span>
-            <input
-              value={draft.longitude}
-              onChange={(event) => onChange('longitude', event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-white outline-none transition focus:border-emerald-400"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-            <span>Optional photo</span>
-            <input
-              type="file"
-              accept="image/*"
-              className="block w-full rounded-xl border border-dashed border-slate-700 bg-slate-950/70 px-3 py-3 text-sm text-slate-200 file:mr-4 file:rounded-full file:border-0 file:bg-emerald-500 file:px-3 file:py-2 file:font-medium file:text-slate-950"
-            />
+            <small>This helps triage, but does not guarantee response time.</small>
           </label>
         </div>
-
-        {submitMessage ? (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-            {submitMessage}
-          </div>
-        ) : null}
-
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
-          >
-            Submit report
-            <ArrowRight className="h-4 w-4" />
-          </button>
+        <div className="form-section-title section-title-spaced"><span>02</span><div><h2>Where is it?</h2><p>Use a public landmark or general area. Avoid home addresses.</p></div></div>
+        <label>Suburb, township or nearby landmark
+          <input required maxLength={140} value={draft.locationDescription} onChange={(event) => update('locationDescription', event.target.value)} placeholder="e.g. near the community hall, Mamelodi West" />
+        </label>
+        <button type="button" className="secondary-button location-button" onClick={useCurrentLocation}><MapPin size={16} /> Use my location</button>
+        {geolocationMessage ? <p className="form-help-message">{geolocationMessage}</p> : null}
+        <div className="form-grid coordinate-grid">
+          <label>Latitude <input inputMode="decimal" value={draft.latitude} onChange={(event) => update('latitude', event.target.value)} placeholder="Optional" /></label>
+          <label>Longitude <input inputMode="decimal" value={draft.longitude} onChange={(event) => update('longitude', event.target.value)} placeholder="Optional" /></label>
+        </div>
+        <div className="form-section-title section-title-spaced"><span>03</span><div><h2>Add a photo</h2><p>Optional, up to 2 MB. Photos stay in this demo session.</p></div></div>
+        <label className="upload-control">
+          <span className="upload-icon"><MapPin size={18} /></span>
+          <span><strong>{imageUrl ? 'Replace selected photo' : 'Choose a photo'}</strong><small>JPG, PNG or another browser-supported image format · 2 MB max</small></span>
+          <input type="file" accept="image/*" onChange={(event) => handleImage(event.currentTarget.files?.[0])} />
+        </label>
+        {imageUrl ? <img className="upload-preview" src={imageUrl} alt="Selected report evidence preview" /> : null}
+        {duplicateRefs.length ? <div className="form-warning"><strong>Similar reports to review:</strong> {duplicateRefs.join(', ')}. Review them before continuing. If this is a separate issue, choose “Submit as separate issue”.</div> : null}
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        <div className="form-footer">
+          <p>Submitting creates a demo reference number and sample status history.</p>
+          <button className="primary-button" type="submit">{duplicateRefs.length ? 'Submit as separate issue' : 'Submit report'} <CirclePlus size={17} /></button>
         </div>
       </form>
-    </div>
+      <button type="button" className="back-link" onClick={() => navigate(-1)}>← Back</button>
+    </section>
   )
 }
 
-function ResidentDashboardPage({ reports }: { reports: Report[] }) {
+function MyReportsPage({ reports }: { reports: Report[] }) {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Resident view</p>
-          <h1 className="mt-2 text-3xl font-bold text-white">My report dashboard</h1>
+    <section className="page-content">
+      <div className="page-title-block page-title-flex">
+        <div><p className="eyebrow">Resident dashboard</p><h1>My reports</h1><p>Follow the latest status and updates for reports you submitted in this demo.</p></div>
+        <Link className="primary-button" to="/report">Report an issue <CirclePlus size={17} /></Link>
+      </div>
+      {reports.length ? (
+        <div className="my-report-list">
+          {reports.map((report) => (
+            <Link to={`/reports/${report.id}`} className="my-report-row" key={report.id}>
+              <span className="my-report-icon"><ClipboardList size={19} /></span>
+              <span className="my-report-content"><strong>{report.title}</strong><small>{report.referenceNumber} · {report.community ?? report.locationDescription}</small><span className="my-report-update">{report.statusHistory[0]?.note}</span></span>
+              <StatusBadge status={report.status} />
+            </Link>
+          ))}
         </div>
-        <Link
-          to="/report"
-          className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
-        >
-          New report
-        </Link>
-      </div>
-
-      <div className="grid gap-4">
-        {reports.map((report) => (
-          <div key={report.id} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div>
-                <div className="flex items-center gap-3">
-                  <p className="text-lg font-semibold text-white">{report.referenceNumber}</p>
-                  <StatusBadge status={report.status} />
-                </div>
-                <h2 className="mt-2 text-xl font-semibold text-slate-100">{report.title}</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{report.description}</p>
-              </div>
-              <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-300">
-                {report.category}
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Location</p>
-                <p className="mt-2 text-sm text-slate-200">{report.locationDescription}</p>
-              </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Assigned team</p>
-                <p className="mt-2 text-sm text-slate-200">{report.assignedTo}</p>
-              </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Updated</p>
-                <p className="mt-2 text-sm text-slate-200">
-                  {new Date(report.updatedAt).toLocaleDateString('en-ZA', { dateStyle: 'medium' })}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Status history</p>
-              <div className="mt-3 space-y-3">
-                {report.statusHistory.map((entry) => (
-                  <div key={entry.id} className="flex gap-3 rounded-xl bg-slate-900/80 p-3">
-                    <div className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                    <div className="flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium text-white">{entry.previousStatus}</span>
-                        <ArrowRight className="h-3.5 w-3.5 text-slate-500" />
-                        <span className="text-sm font-medium text-emerald-300">{entry.newStatus}</span>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-400">{new Date(entry.createdAt).toLocaleString('en-ZA')}</p>
-                      <p className="mt-1 text-sm text-slate-300">{entry.note}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+      ) : <EmptyPageState title="No reports yet" description="Your submitted reports will appear here." />}
+    </section>
   )
 }
 
-function AdminDashboardPage({
-  reports,
-  onStatusChange,
-}: {
-  reports: Report[]
-  onStatusChange: (reportId: string, nextStatus: ReportStatus) => void
-}) {
-  const [selectedStatus, setSelectedStatus] = useState<'All' | ReportStatus>('All')
-  const [selectedCategory, setSelectedCategory] = useState<'All' | string>('All')
-  const [adminHint, setAdminHint] = useState('')
-
+function AdminPage({ reports, onStatusChange, onPreview }: { reports: Report[]; onStatusChange: (reportId: string, status: ReportStatus, note: string, assignedTo: string) => void; onPreview: (imageUrl: string) => void }) {
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('All statuses')
+  const metrics = buildDashboardMetrics(reports)
   const filteredReports = reports.filter((report) => {
-    const matchesStatus = selectedStatus === 'All' || report.status === selectedStatus
-    const matchesCategory = selectedCategory === 'All' || report.category === selectedCategory
-    return matchesStatus && matchesCategory
+    const matchesSearch = `${report.title} ${report.referenceNumber} ${report.locationDescription}`.toLowerCase().includes(search.toLowerCase())
+    return matchesSearch && (statusFilter === 'All statuses' || report.status === statusFilter)
   })
 
-  const duplicateWarnings = reports
-    .map((report) => ({
-      report,
-      duplicates: findDuplicateReports(
-        reports.filter((candidate) => candidate.id !== report.id),
-        report,
-      ),
-    }))
-    .filter(({ duplicates }) => duplicates.length > 0)
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Admin operations</p>
-          <h1 className="mt-2 text-3xl font-bold text-white">Service request dashboard</h1>
+    <section className="page-content admin-page">
+      <div className="admin-demo-notice"><ShieldCheck size={18} /><span><strong>Admin demo view.</strong> This screen is not protected by authentication and updates are local to this demo session.</span></div>
+      <div className="page-title-block"><p className="eyebrow">Service operations</p><h1>Report management</h1><p>Review and update the sample community reports. Dashboard figures are calculated from these records.</p></div>
+      <div className="metric-grid">
+        {metrics.map((metric) => <div className="metric-card" key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong></div>)}
+      </div>
+      <div className="admin-table-panel">
+        <div className="table-toolbar">
+          <div><h2>All reports</h2><p>{filteredReports.length} matching sample records</p></div>
+          <div className="table-filters">
+            <label className="search-field"><span className="visually-hidden">Search reports</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search reports" /></label>
+            <select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select>
+          </div>
         </div>
-        <div className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200">
-          {reports.length} total records
+        <div className="admin-report-list">
+          {filteredReports.map((report) => (
+            <AdminReportRow key={report.id} report={report} onStatusChange={onStatusChange} onPreview={onPreview} />
+          ))}
+          {!filteredReports.length ? <EmptyPageState title="No matching reports" description="Change the search or status filter to see other records." /> : null}
         </div>
       </div>
+    </section>
+  )
+}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        {dashboardStats.map((item) => (
-          <div key={item.label} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-            <p className="text-sm text-slate-400">{item.label}</p>
-            <p className="mt-3 text-3xl font-black text-white">{item.value}</p>
-          </div>
-        ))}
+function AdminReportRow({ report, onStatusChange, onPreview }: { report: Report; onStatusChange: (reportId: string, status: ReportStatus, note: string, assignedTo: string) => void; onPreview: (imageUrl: string) => void }) {
+  const [status, setStatus] = useState(report.status)
+  const [note, setNote] = useState('')
+  const [assignedTo, setAssignedTo] = useState(report.assignedTo)
+  const [error, setError] = useState('')
+  const save = () => {
+    if (status === 'Rejected' && !note.trim()) {
+      setError('Add a reason before rejecting a report.')
+      return
+    }
+    if (status === 'Resolved' && !note.trim()) {
+      setError('Add completion notes before marking a report resolved.')
+      return
+    }
+    if (status === report.status && !note.trim() && assignedTo === report.assignedTo) return
+    onStatusChange(report.id, status, note || `Status updated to ${status}.`, assignedTo)
+    setNote('')
+    setError('')
+  }
+  return (
+    <article className="admin-report">
+      <div className="admin-report-summary">
+        <div className="admin-report-heading"><div><span className="reference-number">{report.referenceNumber}</span><StatusBadge status={report.status} /></div><Link to={`/reports/${report.id}`}>{report.title}</Link><p><MapPin size={13} />{report.community ?? report.locationDescription} · {report.category}</p></div>
+        {report.imageUrl ? <button type="button" className="admin-image-button" onClick={() => onPreview(report.imageUrl!)}><img src={report.imageUrl} alt={`Illustrative demo image for ${report.title}`} loading="lazy" /></button> : null}
       </div>
-
-      {adminHint ? (
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-          {adminHint}
-        </div>
-      ) : null}
-
-      <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap gap-3">
-            <select
-              value={selectedStatus}
-              onChange={(event) => setSelectedStatus(event.target.value as 'All' | ReportStatus)}
-              className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-white"
-            >
-              <option value="All">All statuses</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-            <select
-              value={selectedCategory}
-              onChange={(event) => setSelectedCategory(event.target.value)}
-              className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-white"
-            >
-              <option value="All">All categories</option>
-              {reportCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-slate-300">
-            <AlertTriangle className="h-4 w-4 text-amber-300" />
-            Duplicate warnings require manual review before merging.
-          </div>
-        </div>
-
-        {duplicateWarnings.length > 0 ? (
-          <div className="mb-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-amber-200">Possible duplicate reviews</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {duplicateWarnings.slice(0, 4).map(({ report, duplicates }) => (
-                <div key={report.id} className="rounded-full border border-amber-400/30 bg-slate-950/60 px-3 py-2 text-xs text-amber-100">
-                  {report.referenceNumber} ↔ {duplicates[0]?.referenceNumber ?? 'manual review'}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm text-slate-300">
-            <thead>
-              <tr className="border-b border-slate-800 text-xs uppercase tracking-[0.18em] text-slate-500">
-                <th className="px-4 py-3">Report</th>
-                <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Priority</th>
-                <th className="px-4 py-3">Assigned</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReports.map((report) => (
-                <tr key={report.id} className="border-b border-slate-800/80">
-                  <td className="px-4 py-4 align-top">
-                    <div>
-                      <p className="font-semibold text-white">{report.referenceNumber}</p>
-                      <p className="mt-1 text-slate-300">{report.title}</p>
-                      <p className="mt-2 text-xs text-slate-500">{report.locationDescription}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 align-top text-slate-200">{report.category}</td>
-                  <td className="px-4 py-4 align-top">
-                    <div className="flex flex-col gap-2">
-                      <StatusBadge status={report.status} />
-                      <select
-                        value={report.status}
-                        onChange={(event) => {
-                          const nextStatus = event.target.value as ReportStatus
-                          setAdminHint(nextStatusMessage(report.status, nextStatus))
-                          onStatusChange(report.id, nextStatus)
-                        }}
-                        className="rounded-xl border border-slate-700 bg-slate-950/70 px-2 py-2 text-xs text-white"
-                      >
-                        {statusOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 align-top text-slate-200">{report.priority}</td>
-                  <td className="px-4 py-4 align-top text-slate-200">{report.assignedTo}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="admin-controls">
+        <label>Status<select value={status} onChange={(event) => setStatus(event.target.value as ReportStatus)}>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label>Responsible team<input value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} placeholder="Assign a team" /></label>
+        <label className="admin-note-field">Public progress note<input value={note} onChange={(event) => { setNote(event.target.value); setError('') }} placeholder={status === 'Resolved' ? 'Completion details required' : status === 'Rejected' ? 'Reason required' : 'What should residents know?'} /></label>
+        <button className="secondary-button" type="button" onClick={save}>Save update</button>
       </div>
-    </div>
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {report.statusHistory.length ? <p className="admin-last-update"><Activity size={13} />Latest: {report.statusHistory[0].note}</p> : null}
+    </article>
   )
 }
 
 function MapPage({ reports }: { reports: Report[] }) {
-  return (
-    <div className="space-y-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Location intelligence</p>
-          <h1 className="mt-2 text-3xl font-bold text-white">Map of reported issues</h1>
-        </div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-300">
-          <MapPinned className="h-3.5 w-3.5 text-emerald-300" />
-          OpenStreetMap data
-        </div>
-      </div>
-      <ReportMap reports={reports} />
-    </div>
+  const [status, setStatus] = useState('All statuses')
+  const [category, setCategory] = useState('All categories')
+  const filtered = reports.filter((report) =>
+    (status === 'All statuses' || report.status === status) &&
+    (category === 'All categories' || report.category === category),
   )
+  return (
+    <section className="page-content map-page">
+      <div className="page-title-block"><p className="eyebrow">Location view</p><h1>Community issue map</h1><p>Explore the sample report locations. Exact resident addresses are not shown.</p></div>
+      <div className="map-filter-row">
+        <label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option>All categories</option>{reportCategories.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option>All statuses</option>{statusOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <span>{filtered.length} sample reports</span>
+      </div>
+      <ReportMap reports={filtered} />
+      <div className="map-report-list">{filtered.map((report) => <Link to={`/reports/${report.id}`} className="map-report-row" key={report.id}><MapPin size={17} /><span><strong>{report.title}</strong><small>{report.community ?? report.locationDescription}</small></span><StatusBadge status={report.status} /></Link>)}</div>
+      <p className="map-disclaimer">Sample locations only. No claim of official municipal integration.</p>
+    </section>
+  )
+}
+
+function ReportDetailsPage(props: {
+  reports: Report[]
+  supportedIds: string[]
+  savedIds: string[]
+  followedIds: string[]
+  flaggedIds: string[]
+  commentsByReport: Record<string, string[]>
+  onSupport: (reportId: string) => void
+  onSave: (reportId: string) => void
+  onFollow: (reportId: string) => void
+  onFlag: (reportId: string) => void
+  onAddComment: (reportId: string, comment: string) => void
+  onPreview: (imageUrl: string) => void
+  onShare: (report: Report) => void
+}) {
+  const { reportId } = useParams()
+  const report = props.reports.find((item) => item.id === reportId)
+  if (!report) return <EmptyPageState title="Report not found" description="This report may no longer be available in the current demo session." />
+  const comments = props.commentsByReport[report.id] ?? []
+  return (
+    <section className="page-content detail-page">
+      <Link to="/" className="back-link">← Back to community feed</Link>
+      <div className="detail-grid">
+        <div>
+          <ReportPost
+            report={report}
+            supported={props.supportedIds.includes(report.id)}
+            saved={props.savedIds.includes(report.id)}
+            followed={props.followedIds.includes(report.id)}
+            flagged={props.flaggedIds.includes(report.id)}
+            comments={comments}
+            onSupport={props.onSupport}
+            onSave={props.onSave}
+            onFollow={props.onFollow}
+            onFlag={props.onFlag}
+            onAddComment={props.onAddComment}
+            onPreview={props.onPreview}
+            onShare={props.onShare}
+          />
+        </div>
+        <aside className="detail-side-panel">
+          <div className="detail-status-heading"><div><p className="eyebrow">Current status</p><StatusBadge status={report.status} /></div></div>
+          <h2>Progress history</h2>
+          <ol className="detail-history">
+            {report.statusHistory.slice().reverse().map((entry) => (
+              <li key={entry.id}>
+                <span className="history-marker" />
+                <div><strong>{entry.newStatus}</strong><time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString('en-ZA')}</time><p>{entry.note}</p></div>
+              </li>
+            ))}
+          </ol>
+          {report.resolutionNotes ? <div className="resolution-note"><Check size={16} /><p><strong>Resolution notes</strong><br />{report.resolutionNotes}</p></div> : null}
+          {report.resolutionImageUrl ? <button type="button" className="detail-evidence" onClick={() => props.onPreview(report.resolutionImageUrl!)}><img src={report.resolutionImageUrl} alt="Resolution evidence" /><span>View resolution evidence</span></button> : null}
+          <div className="detail-follow">
+            <p>Get updates when this report progresses.</p>
+            <button type="button" className="secondary-button" onClick={() => props.onFollow(report.id)}>{props.followedIds.includes(report.id) ? 'Following updates' : 'Follow updates'}</button>
+          </div>
+          <div className="detail-location"><MapPin size={16} /><p><strong>Reported area</strong><br />{report.community ?? report.locationDescription}</p></div>
+          <div className="detail-map-block">
+            <p>Approximate location view</p>
+            <ReportMap reports={[report]} />
+          </div>
+        </aside>
+      </div>
+    </section>
+  )
+}
+
+function NotificationsPage({ reports, followedIds }: { reports: Report[]; followedIds: string[] }) {
+  const notificationReports = reports.filter((report) => followedIds.includes(report.id) || report.userId === 'resident-demo')
+  return (
+    <section className="page-content">
+      <div className="page-title-block"><p className="eyebrow">Updates</p><h1>Notifications</h1><p>In-app demo updates based on report status history. No push or email delivery is configured.</p></div>
+      <div className="notification-list">
+        {notificationReports.map((report) => {
+          const update = report.statusHistory[0]
+          return <Link to={`/reports/${report.id}`} className="notification-card" key={report.id}><span className="notification-icon"><Activity size={17} /></span><span><strong>{report.referenceNumber}: {report.status}</strong><small>{update?.note}</small><time>{update ? new Date(update.createdAt).toLocaleString('en-ZA') : 'No recorded update'}</time></span></Link>
+        })}
+        {!notificationReports.length ? <EmptyPageState title="No updates to show" description="Follow a report or submit one to see demo updates here." /> : null}
+      </div>
+    </section>
+  )
+}
+
+function EmptyPageState({ title, description }: { title: string; description: string }) {
+  return <div className="empty-state"><ClipboardList size={24} /><h2>{title}</h2><p>{description}</p></div>
+}
+
+function NotFoundPage() {
+  return <section className="page-content"><EmptyPageState title="Page not found" description="The page you are looking for is not part of this CivicFix demo." /><Link to="/" className="primary-button">Go to community feed</Link></section>
 }
 
 export default App

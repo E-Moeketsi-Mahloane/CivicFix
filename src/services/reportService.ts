@@ -5,9 +5,12 @@ type DuplicateCandidate =
   | Pick<ReportDraft, 'category' | 'description' | 'locationDescription' | 'latitude' | 'longitude'>
 
 export function generateReferenceNumber(): string {
-  const now = Date.now().toString()
-  const suffix = now.slice(-6)
-  return `CF-${suffix}`
+  const randomSuffix = crypto.getRandomValues(new Uint32Array(1))[0]
+    .toString(36)
+    .toUpperCase()
+    .padStart(7, '0')
+    .slice(-7)
+  return `CF-${new Date().getFullYear()}-${randomSuffix}`
 }
 
 export function buildDashboardMetrics(reports: Report[]) {
@@ -15,6 +18,7 @@ export function buildDashboardMetrics(reports: Report[]) {
     total: reports.length,
     open: reports.filter((report) => report.status !== 'Resolved' && report.status !== 'Rejected').length,
     inReview: reports.filter((report) => report.status === 'Under Review').length,
+    assigned: reports.filter((report) => report.status === 'Assigned').length,
     inProgress: reports.filter((report) => report.status === 'In Progress').length,
     resolved: reports.filter((report) => report.status === 'Resolved').length,
   }
@@ -23,6 +27,8 @@ export function buildDashboardMetrics(reports: Report[]) {
     { label: 'Total reports', value: counts.total.toLocaleString('en-ZA'), tone: 'slate' },
     { label: 'Open reports', value: counts.open.toLocaleString('en-ZA'), tone: 'amber' },
     { label: 'Under review', value: counts.inReview.toLocaleString('en-ZA'), tone: 'sky' },
+    { label: 'Assigned', value: counts.assigned.toLocaleString('en-ZA'), tone: 'blue' },
+    { label: 'In progress', value: counts.inProgress.toLocaleString('en-ZA'), tone: 'teal' },
     { label: 'Resolved', value: counts.resolved.toLocaleString('en-ZA'), tone: 'emerald' },
   ]
 }
@@ -34,8 +40,13 @@ export function findDuplicateReports(reports: Report[], draft: DuplicateCandidat
     .replace(/\s+/g, ' ')
     .trim()
 
-  const trialLatitude = Number(draft.latitude) || 0
-  const trialLongitude = Number(draft.longitude) || 0
+  const hasDraftCoordinates =
+    draft.latitude !== null &&
+    draft.longitude !== null &&
+    String(draft.latitude).trim() !== '' &&
+    String(draft.longitude).trim() !== ''
+  const trialLatitude = Number(draft.latitude)
+  const trialLongitude = Number(draft.longitude)
 
   return reports.filter((report) => {
     if (report.category !== draft.category) {
@@ -53,12 +64,19 @@ export function findDuplicateReports(reports: Report[], draft: DuplicateCandidat
       (reportDescription.includes(normalizedDescription.slice(0, 18)) ||
         normalizedDescription.includes(reportDescription.slice(0, 18)))
 
-    const locationDistanceKm = Math.hypot(
-      report.latitude - trialLatitude,
-      report.longitude - trialLongitude,
-    ) * 111
+    const locationDistanceKm =
+      report.latitude !== null &&
+      report.longitude !== null &&
+      hasDraftCoordinates &&
+      Number.isFinite(trialLatitude) &&
+      Number.isFinite(trialLongitude)
+        ? Math.hypot(report.latitude - trialLatitude, report.longitude - trialLongitude) * 111
+        : Number.POSITIVE_INFINITY
 
-    const sameLocationZone = draft.locationDescription.toLowerCase().includes(report.locationDescription.toLowerCase().slice(0, 10)) || locationDistanceKm < 1.5
+    const descriptionLocationMatch =
+      report.locationDescription.length > 0 &&
+      draft.locationDescription.toLowerCase().includes(report.locationDescription.toLowerCase().slice(0, 10))
+    const sameLocationZone = descriptionLocationMatch || locationDistanceKm < 1.5
 
     return keywordSimilarity || sameLocationZone
   })
