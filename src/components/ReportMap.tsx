@@ -9,12 +9,12 @@ export function ReportMap({ reports }: { reports: Report[] }) {
   )
 
   return (
-    <div className="h-[420px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+    <div className="report-map-container">
       <MapContainer
         center={[-26.02, 28.18]}
         zoom={9}
         scrollWheelZoom
-        className="h-full w-full"
+        className="report-map"
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -36,8 +36,8 @@ export function ReportMap({ reports }: { reports: Report[] }) {
             })}
           >
             <Popup>
-              <div className="space-y-1 text-sm text-slate-700">
-                <p className="font-semibold text-slate-900">{report.title}</p>
+              <div className="map-popup">
+                <p className="map-popup-title">{report.title}</p>
                 <p>{report.referenceNumber}</p>
                 <p>{report.category}</p>
                 <p>{report.community ?? 'General community area'}</p>

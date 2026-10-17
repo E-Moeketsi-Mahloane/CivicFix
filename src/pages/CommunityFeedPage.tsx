@@ -16,7 +16,7 @@ import {
 import { Link } from 'react-router-dom'
 import { ReportPost } from '../components/ReportPost'
 import { reportCategories, statusOptions } from '../data/mockData'
-import type { Report, ReportCategory, ReportStatus } from '../types'
+import type { Report, ReportCategory, ReportComment, ReportStatus } from '../types'
 
 type FeedSort = 'newest' | 'updated' | 'supported'
 type FeedTab = 'all' | 'following' | 'resolved'
@@ -27,14 +27,17 @@ type CommunityFeedPageProps = {
   savedIds: string[]
   followedIds: string[]
   flaggedIds: string[]
-  commentsByReport: Record<string, string[]>
+  commentsByReport: Record<string, ReportComment[]>
   onSupport: (reportId: string) => void
   onSave: (reportId: string) => void
   onFollow: (reportId: string) => void
   onFlag: (reportId: string) => void
-  onAddComment: (reportId: string, comment: string) => void
+  onAddComment: (reportId: string, comment: string) => Promise<boolean> | void
   onPreview: (imageUrl: string) => void
   onShare: (report: Report) => void
+  liveMode: boolean
+  isAuthenticated: boolean
+  isLoading: boolean
 }
 
 export function CommunityFeedPage({
@@ -51,6 +54,9 @@ export function CommunityFeedPage({
   onAddComment,
   onPreview,
   onShare,
+  liveMode,
+  isAuthenticated,
+  isLoading,
 }: CommunityFeedPageProps) {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState<'All categories' | ReportCategory>('All categories')
@@ -120,14 +126,14 @@ export function CommunityFeedPage({
     <div className="feed-layout">
       <aside className="feed-sidebar left-sidebar" aria-label="Community navigation">
         <section className="sidebar-profile">
-          <div className="avatar avatar-large">Y</div>
+          <div className="avatar avatar-large">{isAuthenticated ? 'Y' : 'G'}</div>
           <div>
-            <strong>Welcome, resident</strong>
-            <span>Johannesburg South</span>
+            <strong>{isAuthenticated ? 'Welcome to CivicFix' : 'Welcome, community member'}</strong>
+            <span>{liveMode ? 'Community reports' : 'Sample community'}</span>
           </div>
         </section>
         <nav className="feed-side-nav">
-          <Link to="/" className="side-nav-link is-active"><Activity size={18} />Community Feed</Link>
+          <Link to="/" className="side-nav-link"><Activity size={18} />Community Feed</Link>
           <Link to="/report" className="side-nav-link"><CirclePlus size={18} />Report an issue</Link>
           <Link to="/dashboard" className="side-nav-link"><ClipboardList size={18} />My reports</Link>
           <button type="button" className="side-nav-link" onClick={() => setTab('following')}><Bookmark size={18} />Saved & followed</button>
@@ -157,7 +163,7 @@ export function CommunityFeedPage({
         </div>
 
         <Link to="/report" className="feed-composer">
-          <div className="avatar avatar-small">Y</div>
+          <div className="avatar avatar-small">{isAuthenticated ? 'Y' : 'G'}</div>
           <span>What needs attention in your community?</span>
           <span className="composer-action"><CirclePlus size={17} /> Report</span>
         </Link>
@@ -229,10 +235,12 @@ export function CommunityFeedPage({
 
         <div className="feed-count-row">
           <span>{filteredReports.length} {filteredReports.length === 1 ? 'report' : 'reports'}</span>
-          <span>Sample community reports · Not an official municipal channel</span>
+          <span>{liveMode ? 'Community-submitted reports · Independent platform' : 'Sample community reports · Demo'}</span>
         </div>
 
-        {filteredReports.length ? (
+        {isLoading ? (
+          <div className="empty-state" role="status"><h2>Loading community reports…</h2></div>
+        ) : filteredReports.length ? (
           <div className="feed-post-list">
             {filteredReports.slice(0, visibleCount).map((report) => (
               <ReportPost
@@ -256,9 +264,18 @@ export function CommunityFeedPage({
         ) : (
           <div className="empty-state">
             <Search size={24} />
-            <h2>No reports match those filters</h2>
-            <p>Try a different search or clear the selected filters.</p>
-            <button type="button" onClick={clearFilters}>Clear filters</button>
+            <h2>{liveMode && !isAuthenticated ? 'Log in to view community reports' : 'No reports match those filters'}</h2>
+            {liveMode && !isAuthenticated
+              ? <p>Sign in to browse reports available to your account, then submit and follow issues in your municipality.</p>
+              : <p>Try a different search or clear the selected filters.</p>}
+            {liveMode && !isAuthenticated
+              ? (
+                <div className="empty-state-actions">
+                  <Link to="/login" className="primary-button">Log in</Link>
+                  <Link to="/signup" className="secondary-button">Create an account</Link>
+                </div>
+              )
+              : <button type="button" onClick={clearFilters}>Clear filters</button>}
           </div>
         )}
         {filteredReports.length > visibleCount ? (
@@ -271,8 +288,8 @@ export function CommunityFeedPage({
       <aside className="feed-sidebar right-sidebar" aria-label="Community activity">
         <section className="side-panel">
           <div className="side-panel-heading"><UsersRound size={17} /><h2>Community snapshot</h2></div>
-          <p className="snapshot-community">Johannesburg South</p>
-          <p className="snapshot-note">Counts below are derived from the sample reports currently shown in this demo.</p>
+          <p className="snapshot-community">{liveMode ? 'CivicFix community' : 'Johannesburg South'}</p>
+          <p className="snapshot-note">{liveMode ? 'Counts reflect reports visible to your signed-in account.' : 'Counts below are derived from sample reports in this demo.'}</p>
           <div className="snapshot-stat">
             <span>Open reports</span><strong>{openCount}</strong>
           </div>
@@ -280,7 +297,7 @@ export function CommunityFeedPage({
             <span>Awaiting review</span><strong>{reviewCount}</strong>
           </div>
           <div className="snapshot-stat">
-            <span>Resolved in sample</span><strong>{recentlyResolved}</strong>
+            <span>{liveMode ? 'Resolved' : 'Resolved in sample'}</span><strong>{recentlyResolved}</strong>
           </div>
         </section>
         <section className="side-panel activity-panel">

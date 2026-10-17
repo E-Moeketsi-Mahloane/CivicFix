@@ -14,6 +14,8 @@ export const statusOptions: ReportStatus[] = [
   'Under Review',
   'Assigned',
   'In Progress',
+  'Awaiting Action',
+  'Pending Completion Review',
   'Resolved',
   'Rejected',
 ]

@@ -11,6 +11,8 @@ export type ReportStatus =
   | 'Under Review'
   | 'Assigned'
   | 'In Progress'
+  | 'Awaiting Action'
+  | 'Pending Completion Review'
   | 'Resolved'
   | 'Rejected'
 
@@ -46,9 +48,17 @@ export interface Report {
   community?: string
   supportCount?: number
   commentCount?: number
+  engagementCountsIncludeViewer?: boolean
   imageUrl?: string
   resolutionImageUrl?: string
   resolutionNotes?: string
+}
+
+export interface ReportComment {
+  id: string
+  body: string
+  author: string
+  createdAt: string
 }
 
 export interface ReportDraft {

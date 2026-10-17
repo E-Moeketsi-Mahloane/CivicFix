@@ -6,6 +6,8 @@ const stages: Exclude<ReportStatus, 'Rejected'>[] = [
   'Under Review',
   'Assigned',
   'In Progress',
+  'Awaiting Action',
+  'Pending Completion Review',
   'Resolved',
 ]
 

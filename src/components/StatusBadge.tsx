@@ -5,6 +5,8 @@ const statusClass: Record<ReportStatus, string> = {
   'Under Review': 'status-review',
   Assigned: 'status-assigned',
   'In Progress': 'status-progress',
+  'Awaiting Action': 'status-awaiting',
+  'Pending Completion Review': 'status-review',
   Resolved: 'status-resolved',
   Rejected: 'status-rejected',
 }

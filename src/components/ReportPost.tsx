@@ -19,7 +19,7 @@ import {
 import { Link } from 'react-router-dom'
 import { ReportTimeline } from './ReportTimeline'
 import { StatusBadge } from './StatusBadge'
-import type { Report } from '../types'
+import type { Report, ReportComment } from '../types'
 
 type ReportPostProps = {
   report: Report
@@ -27,12 +27,12 @@ type ReportPostProps = {
   saved: boolean
   followed: boolean
   flagged: boolean
-  comments: string[]
+  comments: ReportComment[]
   onSupport: (reportId: string) => void
   onSave: (reportId: string) => void
   onFollow: (reportId: string) => void
   onFlag: (reportId: string) => void
-  onAddComment: (reportId: string, comment: string) => void
+  onAddComment: (reportId: string, comment: string) => Promise<boolean> | void
   onPreview: (imageUrl: string) => void
   onShare: (report: Report) => void
 }
@@ -79,12 +79,12 @@ export function ReportPost({
     year: 'numeric',
   }).format(date)
 
-  function submitComment(event: FormEvent<HTMLFormElement>) {
+  async function submitComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const comment = commentDraft.trim()
     if (!comment) return
-    onAddComment(report.id, comment)
-    setCommentDraft('')
+    const result = await onAddComment(report.id, comment)
+    if (result !== false) setCommentDraft('')
   }
 
   return (
@@ -112,8 +112,8 @@ export function ReportPost({
         <button
           className={`icon-button${flagged ? ' is-selected' : ''}`}
           type="button"
-          aria-label={flagged ? 'Report flagged for demo review' : 'Flag report for demo review'}
-          title={flagged ? 'Flagged in this demo' : 'Flag for review'}
+          aria-label={flagged ? 'Report flagged for review' : 'Flag report for review'}
+          title={flagged ? 'Flagged for review' : 'Flag for review'}
           onClick={() => onFlag(report.id)}
           disabled={flagged}
         >
@@ -134,8 +134,8 @@ export function ReportPost({
           onClick={() => onPreview(report.imageUrl!)}
           aria-label={`View larger image for ${report.title}`}
         >
-          <img src={report.imageUrl} alt={`Illustrative demo image for ${report.title}`} loading="lazy" />
-          <span className="image-caption"><Camera size={14} /> Illustrative demo image</span>
+          <img src={report.imageUrl} alt={`Photo attached to ${report.title}`} loading="lazy" />
+          <span className="image-caption"><Camera size={14} /> Report photo</span>
         </button>
       ) : null}
 
@@ -173,15 +173,15 @@ export function ReportPost({
             onClick={() => onPreview(report.resolutionImageUrl!)}
           >
             <CheckCircle2 size={15} />
-            Demo resolution image
+            Resolution evidence
             <img src={report.resolutionImageUrl} alt="" loading="lazy" />
           </button>
         ) : null}
       </div>
 
       <div className="post-engagement">
-        <span><Heart size={14} /> {Math.max(0, (report.supportCount ?? 0) + (supported ? 1 : 0))} supports</span>
-        <span><MessageCircle size={14} /> {(report.commentCount ?? 0) + comments.length} comments</span>
+        <span><Heart size={14} /> {Math.max(0, (report.supportCount ?? 0) + (supported && !report.engagementCountsIncludeViewer ? 1 : 0))} supports</span>
+        <span><MessageCircle size={14} /> {(report.commentCount ?? 0) + (report.engagementCountsIncludeViewer ? 0 : comments.length)} comments</span>
       </div>
 
       <div className="post-actions">
@@ -212,10 +212,10 @@ export function ReportPost({
         <div className="comments-area">
           {comments.length > 0 ? (
             <ul className="comment-list">
-              {comments.map((comment, index) => (
-                <li key={`${report.id}-comment-${index}`}>
-                  <span className="comment-avatar" aria-hidden="true">Y</span>
-                  <p><strong>You</strong>{comment}</p>
+              {comments.map((comment) => (
+                <li key={comment.id}>
+                  <span className="comment-avatar" aria-hidden="true">{comment.author.slice(0, 1)}</span>
+                  <p><strong>{comment.author}</strong>{comment.body}<time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleString('en-ZA')}</time></p>
                 </li>
               ))}
             </ul>
