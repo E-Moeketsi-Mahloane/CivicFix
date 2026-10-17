@@ -15,8 +15,9 @@ import {
   Bookmark,
   Flag,
   Trash2,
+  ExternalLink,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ReportTimeline } from './ReportTimeline'
 import { StatusBadge } from './StatusBadge'
 import type { Report, ReportComment } from '../types'
@@ -71,6 +72,7 @@ export function ReportPost({
 }: ReportPostProps) {
   const [commentOpen, setCommentOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState('')
+  const navigate = useNavigate()
   const lastUpdate = report.statusHistory[0]
   const date = new Date(report.createdAt)
   const formattedDate = new Intl.DateTimeFormat('en-ZA', {
@@ -78,6 +80,16 @@ export function ReportPost({
     month: 'short',
     year: 'numeric',
   }).format(date)
+
+  const openLocationOnMap = () => {
+    if (report.latitude !== null && report.longitude !== null) {
+      const url = new URL(`/map`, window.location.origin)
+      url.searchParams.set('lat', String(report.latitude))
+      url.searchParams.set('lng', String(report.longitude))
+      url.searchParams.set('id', report.id)
+      navigate(url.toString())
+    }
+  }
 
   async function submitComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -139,7 +151,7 @@ export function ReportPost({
         </button>
       ) : null}
 
-      <div className="post-location-row">
+      <div className="post-location-row" onClick={report.latitude !== null && report.longitude !== null ? openLocationOnMap : undefined} style={report.latitude !== null && report.longitude !== null ? { cursor: 'pointer' } : undefined}>
         <MapPin size={15} aria-hidden="true" />
         <span>{report.community ?? report.locationDescription}</span>
         <span className="location-separator">·</span>
@@ -148,6 +160,7 @@ export function ReportPost({
           {report.priority === 'Critical' ? <AlertTriangle size={13} /> : null}
           {report.priority} priority
         </span>
+        {report.latitude !== null && report.longitude !== null ? <ExternalLink size={12} style={{ marginLeft: 6, opacity: 0.6 }} /> : null}
       </div>
 
       <div className="post-progress">

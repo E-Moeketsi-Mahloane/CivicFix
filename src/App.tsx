@@ -39,6 +39,7 @@ import {
   type CivicNotification,
 } from './services/civicDataService'
 import type { Report, ReportComment, ReportDraft, ReportStatus } from './types'
+import { useSearchParams } from 'react-router-dom'
 import './App.css'
 
 const blankDraft: ReportDraft = {
@@ -59,6 +60,7 @@ function App() {
   const [flaggedIds, setFlaggedIds] = useState<string[]>([])
   const [commentsByReport, setCommentsByReport] = useState<Record<string, ReportComment[]>>({})
   const [activeUser, setActiveUser] = useState<User | null>(null)
+  const [userRole, setUserRole] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<CivicNotification[]>([])
   const [dataLoading, setDataLoading] = useState(!isDemoMode)
   const [dataError, setDataError] = useState('')
@@ -118,9 +120,22 @@ function App() {
         setFlaggedIds([])
         setCommentsByReport({})
         setNotifications([])
+        setUserRole(null)
         setDataLoading(false)
         setDataError('')
         return
+      }
+      try {
+        const { data: profile, error: profileError } = await client
+          .from('profiles')
+          .select('app_role')
+          .eq('id', user.id)
+          .single()
+        if (!profileError && profile) {
+          setUserRole(profile.app_role)
+        }
+      } catch {
+        // role fetch is non-fatal
       }
       await refreshLiveData(user)
       if (!isActive || current !== sequence) return
@@ -213,9 +228,51 @@ function App() {
       await refreshLiveData(activeUser)
       return true
     } catch (cause) {
-      showError(cause instanceof Error ? cause.message : 'Your comment could not be saved.')
+      const errorMessage = cause instanceof Error ? cause.message : 'Your comment could not be saved.'
+
+      // If municipal staff and the community comment insert failed (likely RLS), fall back to an internal note
+      if ((userRole === 'municipal_worker' || userRole === 'municipal_admin') && activeUser) {
+        const report = reports.find((r) => r.id === reportId)
+        if (report) {
+          try {
+            const { error: rpcError } = await supabase.rpc('worker_update_civic_report', {
+              p_report_id: reportId,
+              p_new_status: report.status,
+              p_public_update: null,
+              p_internal_note: `Staff note: ${comment.trim()}`,
+            })
+            if (!rpcError) {
+              await refreshLiveData(activeUser)
+              showSuccess('Staff note added.')
+              return true
+            }
+          } catch {
+            // fall through to show the original error
+          }
+        }
+      }
+
+      showError(errorMessage)
       return false
     }
+  }
+  const handlePollVote = (reportId: string, vote: PollVote) => {
+    setReports((current) =>
+      current.map((report) => {
+        if (report.id !== reportId || !report.satisfactionPoll) return report
+        if (report.satisfactionPoll.votedBy.includes(activeUser?.id ?? 'demo-voter')) return report
+        return {
+          ...report,
+          satisfactionPoll: {
+            ...report.satisfactionPoll,
+            yesVotes: vote === 'yes' ? report.satisfactionPoll.yesVotes + 1 : report.satisfactionPoll.yesVotes,
+            noVotes: vote === 'no' ? report.satisfactionPoll.noVotes + 1 : report.satisfactionPoll.noVotes,
+            votedBy: [...report.satisfactionPoll.votedBy, activeUser?.id ?? 'demo-voter'],
+          },
+        }
+      }),
+    )
+    showSuccess(`Thank you for your feedback on ${reportId}.`)
   }
   const handleShare = async (report: Report) => {
     const reportUrl = `${window.location.origin}/reports/${report.id}`
@@ -284,6 +341,14 @@ function App() {
         if (report.id !== reportId) return report
         if (status === report.status && assignedTo.trim() === report.assignedTo && !note.trim()) return report
         const statusChanged = status !== report.status
+        const poll = status === 'Resolved' && !report.satisfactionPoll
+          ? {
+              question: 'Was this issue resolved to your satisfaction?',
+              yesVotes: 0,
+              noVotes: 0,
+              votedBy: [],
+            }
+          : report.satisfactionPoll
         return {
           ...report,
           status,
@@ -291,6 +356,7 @@ function App() {
           resolvedAt: status === 'Resolved' ? timestamp : undefined,
           assignedTo: assignedTo.trim() || report.assignedTo,
           resolutionNotes: status === 'Resolved' ? note.trim() : report.resolutionNotes,
+          satisfactionPoll: poll,
           statusHistory: statusChanged || note.trim()
             ? [
                 {
@@ -322,6 +388,7 @@ function App() {
     onFollow: handleFollow,
     onFlag: handleFlag,
     onAddComment: handleAddComment,
+    onPollVote: handlePollVote,
     onPreview: setPreviewImage,
     onShare: handleShare,
     liveMode: !isDemoMode,
@@ -848,7 +915,11 @@ function AdminReportRow({ report, onStatusChange, onPreview }: { report: Report;
   )
 }
 
-function MapPage({ reports, liveMode, isAuthenticated, isLoading }: { reports: Report[]; liveMode: boolean; isAuthenticated: boolean; isLoading: boolean }) {
+  function MapPage({ reports, liveMode, isAuthenticated, isLoading }: { reports: Report[]; liveMode: boolean; isAuthenticated: boolean; isLoading: boolean }) {
+  const [searchParams] = useSearchParams()
+  const latParam = searchParams.get('lat')
+  const lngParam = searchParams.get('lng')
+  const center = latParam && lngParam ? [Number(latParam), Number(lngParam)] as [number, number] : undefined
   const [status, setStatus] = useState('All statuses')
   const [category, setCategory] = useState('All categories')
   const filtered = reports.filter((report) =>
@@ -870,7 +941,7 @@ function MapPage({ reports, liveMode, isAuthenticated, isLoading }: { reports: R
             <span>{filtered.length} {liveMode ? 'reports' : 'sample reports'}</span>
           </div>
           {isLoading ? <div className="empty-state" role="status"><h2>Loading report locations…</h2></div> : null}
-          <ReportMap reports={filtered} />
+          <ReportMap reports={filtered} center={center} />
           <div className="map-report-list">{filtered.map((report) => <Link to={`/reports/${report.id}`} className="map-report-row" key={report.id}><MapPin size={17} /><span><strong>{report.title}</strong><small>{report.community ?? report.locationDescription}</small></span><StatusBadge status={report.status} /></Link>)}</div>
           <p className="map-disclaimer">{liveMode ? 'Locations are approximate and reports are not automatically sent as official municipal complaints.' : 'Sample locations only. No claim of official municipal integration.'}</p>
         </>

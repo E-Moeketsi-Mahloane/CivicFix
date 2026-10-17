@@ -2,17 +2,23 @@ import { divIcon } from 'leaflet'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import type { Report } from '../types'
 
-export function ReportMap({ reports }: { reports: Report[] }) {
+export function ReportMap({ reports, center }: { 
+  reports: Report[] 
+  center?: [number, number]
+}) {
   const validReports = reports.filter(
     (report): report is Report & { latitude: number; longitude: number } =>
       Number.isFinite(report.latitude) && Number.isFinite(report.longitude),
   )
 
+  const mapCenter = center ?? [-26.02, 28.18]
+  const mapZoom = center ? 15 : 9
+
   return (
     <div className="report-map-container">
       <MapContainer
-        center={[-26.02, 28.18]}
-        zoom={9}
+        center={mapCenter}
+        zoom={mapZoom}
         scrollWheelZoom
         className="report-map"
       >
@@ -24,10 +30,7 @@ export function ReportMap({ reports }: { reports: Report[] }) {
         {validReports.map((report) => (
           <Marker
             key={report.id}
-            position={[
-              Math.round(report.latitude * 100) / 100,
-              Math.round(report.longitude * 100) / 100,
-            ]}
+            position={[report.latitude, report.longitude]}
             icon={divIcon({
               className: `civic-map-marker civic-map-marker-${report.category.toLowerCase().replaceAll(/[^a-z]+/g, '-')}`,
               html: '<span></span>',

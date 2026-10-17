@@ -1679,6 +1679,152 @@ a {
   line-height: 1.55;
 }
 
+.municipal-report-image {
+  display: block;
+  width: min(100%, 320px);
+  height: 180px;
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #e8edf1;
+  padding: 0;
+  margin: 10px 0;
+  cursor: pointer;
+}
+
+.municipal-report-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.municipal-report-image:hover {
+  opacity: 0.9;
+}
+
+.municipal-report-location {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #dce3e8;
+  border-radius: 6px;
+  background: #f4f6f8;
+}
+
+.municipal-report-location p {
+  margin: 0 0 8px;
+  color: #455663;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.municipal-map-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--civic-blue);
+  border-radius: 5px;
+  background: white;
+  padding: 6px 10px;
+  color: var(--civic-blue);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.municipal-map-link:hover {
+  border-color: #0e3e6a;
+  background: #f1f6fa;
+}
+
+.municipal-messaging {
+  margin-top: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.municipal-message-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #edf0f2;
+  border-radius: 6px;
+  background: #fafcfd;
+  padding: 12px;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.municipal-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  max-width: 85%;
+}
+
+.municipal-message-own {
+  align-self: flex-end;
+  background: #e8f1fa;
+  border: 1px solid #c8d8e8;
+  margin-left: auto;
+}
+
+.municipal-message-theirs {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid #dce3e8;
+}
+
+.municipal-message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.municipal-message-header strong {
+  color: var(--deep-navy);
+  font-size: 11px;
+}
+
+.municipal-message-role {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.municipal-message-text {
+  margin: 0;
+  color: var(--body);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.municipal-message-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.municipal-message-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #cfd9e0;
+  border-radius: 5px;
+  background: white;
+  padding: 8px 11px;
+  font-size: 12px;
+}
+
 .municipal-actions,
 .municipal-completion-form {
   display: grid;

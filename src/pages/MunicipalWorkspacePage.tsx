@@ -13,6 +13,8 @@ type MunicipalReport = {
   category: string
   status: string
   priority: string
+  latitude: number | null
+  longitude: number | null
   location_description: string | null
   assigned_to: string | null
   assigned_worker_id: string | null
@@ -20,6 +22,7 @@ type MunicipalReport = {
   created_at: string
   updated_at: string
   public_update: string | null
+  imageUrl?: string
 }
 
 type WorkerOption = {
@@ -40,7 +43,7 @@ type CompletionSubmission = {
   submitted_at: string
 }
 
-const reportFields = 'id,reference_number,title,description,category,status,priority,location_description,assigned_to,assigned_worker_id,assigned_team_id,created_at,updated_at,public_update'
+const reportFields = 'id,reference_number,title,description,category,status,priority,latitude,longitude,location_description,assigned_to,assigned_worker_id,assigned_team_id,created_at,updated_at,public_update'
 
 function RoleCheckedMunicipalWorkspace({ user, role }: { user: User; role: MunicipalRole }) {
   const [reports, setReports] = useState<MunicipalReport[]>([])
@@ -58,7 +61,7 @@ function RoleCheckedMunicipalWorkspace({ user, role }: { user: User; role: Munic
     try {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('app_role, municipality_id, team_id, is_active')
+        .select('app_role, municipality_id, team_id, is_active, full_name')
         .eq('id', user.id)
         .single()
       if (profileError) throw profileError
@@ -91,7 +94,42 @@ function RoleCheckedMunicipalWorkspace({ user, role }: { user: User; role: Munic
       if (workersResult.error) throw workersResult.error
       if (completionsResult.error) throw completionsResult.error
 
-      setReports((reportsResult.data ?? []) as MunicipalReport[])
+      const reportRows = (reportsResult.data ?? []) as MunicipalReport[]
+      const attachmentRows = await (async () => {
+        const ids = reportRows.map((r) => r.id)
+        if (!ids.length) return []
+        const { data, error } = await supabase
+          .from('report_attachments')
+          .select('report_id,storage_path')
+          .in('report_id', ids)
+        if (error) return []
+        return data as { report_id: string; storage_path: string }[]
+      })()
+
+      const signedUrlByReport = new Map<string, string>()
+      if (attachmentRows.length) {
+        const paths = attachmentRows.map((row) => row.storage_path)
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('report-attachments')
+          .createSignedUrls(paths, 3600)
+        if (!signedError) {
+          const pathToUrl = new Map<string, string>()
+          for (const entry of signedData ?? []) {
+            if (entry.path && entry.signedUrl) pathToUrl.set(entry.path, entry.signedUrl)
+          }
+          for (const row of attachmentRows) {
+            const url = pathToUrl.get(row.storage_path)
+            if (url && !signedUrlByReport.has(row.report_id)) signedUrlByReport.set(row.report_id, url)
+          }
+        }
+      }
+
+      const reportsWithImages = reportRows.map((report) => ({
+        ...report,
+        imageUrl: signedUrlByReport.get(report.id),
+      }))
+
+      setReports(reportsWithImages)
       setTeams((teamsResult.data ?? []) as TeamOption[])
       setWorkers((workersResult.data ?? []) as WorkerOption[])
       setCompletions((completionsResult.data ?? []) as CompletionSubmission[])
@@ -170,6 +208,7 @@ function RoleCheckedMunicipalWorkspace({ user, role }: { user: User; role: Munic
           onInvoke={invokeWorkflow}
         />
       )}
+      <StaffMessaging user={user} role={role} />
     </section>
   )
 }
@@ -512,12 +551,126 @@ function ReportSummary({ report }: { report: MunicipalReport }) {
         <div><span>{report.reference_number} · {report.category} · {report.priority}</span><h3>{report.title}</h3></div>
         <span className="status-badge">{report.status}</span>
       </div>
+      {report.imageUrl ? (
+        <button
+          type="button"
+          className="municipal-report-image"
+          onClick={() => window.open(report.imageUrl, '_blank')}
+          aria-label={`View report photo for ${report.title}`}
+        >
+          <img src={report.imageUrl} alt={`Report photo for ${report.title}`} loading="lazy" />
+        </button>
+      ) : null}
       <p>{report.description}</p>
-      {report.location_description ? <p><strong>Location:</strong> {report.location_description}</p> : null}
+      {report.location_description ? (
+        <div className="municipal-report-location">
+          <p><strong>Location:</strong> {report.location_description}</p>
+          {report.latitude !== null && report.longitude !== null ? (
+            <button type="button" className="municipal-map-link" onClick={() => {
+              const url = new URL(`/map`, window.location.origin)
+              url.searchParams.set('lat', String(report.latitude))
+              url.searchParams.set('lng', String(report.longitude))
+              url.searchParams.set('id', report.id)
+              window.location.href = url.toString()
+            }}>
+              View exact location on map
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {report.public_update ? <p><strong>Latest public update:</strong> {report.public_update}</p> : null}
       <small>Updated {new Date(report.updated_at).toLocaleString()}</small>
     </div>
   )
+}
+
+type StaffMessage = {
+  id: string
+  senderId: string
+  senderName: string
+  senderRole: string
+  text: string
+  createdAt: string
+}
+
+function StaffMessaging({ user, role }: { user: User; role: MunicipalRole }) {
+  const [messages, setMessages] = useState<StaffMessage[]>([])
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const otherRole = role === 'municipal_worker' ? 'municipal_admin' : 'municipal_worker'
+
+  const senderName = profileFullName(user)
+
+  const sendMessage = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const text = draft.trim()
+    if (!text) return
+    setSending(true)
+    try {
+      const message: StaffMessage = {
+        id: crypto.randomUUID(),
+        senderId: user.id,
+        senderName,
+        senderRole: role,
+        text,
+        createdAt: new Date().toISOString(),
+      }
+      setMessages((current) => [...current, message])
+      setDraft('')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <section className="municipal-section municipal-messaging" aria-labelledby="staff-messaging-heading">
+      <div className="municipal-workspace-heading">
+        <div>
+          <h2 id="staff-messaging-heading">Private Staff Messages</h2>
+          <p>Messages between {role === 'municipal_worker' ? 'you and the municipal administrator' : 'you and field workers'}. This is an in-session chat; message history is not persisted to the database yet.</p>
+        </div>
+      </div>
+      <div className="municipal-message-list">
+        {messages.length ? (
+          messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`municipal-message ${msg.senderId === user.id ? 'municipal-message-own' : 'municipal-message-theirs'}`}
+            >
+              <div className="municipal-message-header">
+                <strong>{msg.senderName}</strong>
+                <span className="municipal-message-role">{msg.senderRole}</span>
+                <span className="municipal-message-time">{new Date(msg.createdAt).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+              <p className="municipal-message-text">{msg.text}</p>
+            </div>
+          ))
+        ) : (
+          <p className="municipal-empty">No messages yet. Start a conversation below.</p>
+        )}
+      </div>
+      <form className="municipal-message-form" onSubmit={sendMessage}>
+        <label className="visually-hidden">Your message</label>
+        <input
+          className="municipal-message-input"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={`Type a message to ${otherRole}…`}
+          disabled={sending}
+        />
+        <button type="submit" className="primary-button" disabled={sending || !draft.trim()}>
+          {sending ? 'Sending…' : 'Send'}
+        </button>
+      </form>
+    </section>
+  )
+}
+
+function profileFullName(user: User): string {
+  const meta = user.user_metadata as { full_name?: string } | undefined
+  if (meta?.full_name) return meta.full_name
+  return user.email ?? 'Staff member'
 }
 
 export function MunicipalWorkspacePage() {

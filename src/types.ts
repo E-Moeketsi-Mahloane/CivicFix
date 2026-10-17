@@ -52,7 +52,15 @@ export interface Report {
   imageUrl?: string
   resolutionImageUrl?: string
   resolutionNotes?: string
+  satisfactionPoll?: {
+    question: string
+    yesVotes: number
+    noVotes: number
+    votedBy: string[]
+  }
 }
+
+export type PollVote = 'yes' | 'no'
 
 export interface ReportComment {
   id: string
